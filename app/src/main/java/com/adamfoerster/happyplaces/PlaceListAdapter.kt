@@ -1,13 +1,22 @@
 package com.adamfoerster.happyplaces
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
+import com.adamfoerster.happyplaces.activities.AddActivity
+import com.adamfoerster.happyplaces.database.PlaceDAO
 import com.adamfoerster.happyplaces.database.PlaceEntity
 import com.adamfoerster.happyplaces.databinding.LayoutPlaceItemBinding
+import com.adamfoerster.happyplaces.utils.Utils
+import org.json.JSONObject
 
-class PlaceListAdapter(private var dataSet: Array<PlaceEntity>) :
+class PlaceListAdapter(private var context: Context, private var dataSet: Array<PlaceEntity>) :
     RecyclerView.Adapter<PlaceListAdapter.ViewHolder>() {
 
     var onItemClick: ((PlaceEntity) -> Unit)? = null
@@ -26,6 +35,22 @@ class PlaceListAdapter(private var dataSet: Array<PlaceEntity>) :
 
     fun setNewItems(items: ArrayList<PlaceEntity>) {
         this.dataSet = items.toTypedArray()
+    }
+
+    fun notifyEditItem(activity: Activity, position: Int, requestCode: Int) {
+        val intent = Intent(context, AddActivity::class.java)
+        intent.putExtra(Utils.EDIT_PLACE_EXTRA, dataSet[position].id)
+        Log.d("bleh", dataSet[position].toString())
+        activity.startActivityForResult(intent, requestCode)
+        notifyItemChanged(position)
+    }
+
+    fun notifyRemoveItem(dao: PlaceDAO, position: Int) {
+        dao.delete(dataSet[position])
+        Toast.makeText(context, "Place no longer happy", Toast.LENGTH_SHORT).show()
+        notifyItemRemoved(position)
+        dataSet = dao.getAll().toTypedArray()
+        notifyDataSetChanged()
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {

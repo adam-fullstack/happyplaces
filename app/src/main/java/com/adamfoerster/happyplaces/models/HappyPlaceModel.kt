@@ -1,5 +1,6 @@
 package com.adamfoerster.happyplaces.models
 
+
 data class HappyPlaceModel(
     val id: Int,
     val title: String,

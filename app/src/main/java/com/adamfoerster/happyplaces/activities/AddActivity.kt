@@ -18,14 +18,16 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.adamfoerster.happyplaces.HappyPlaces
-import com.adamfoerster.happyplaces.Utils.CAMERA_ACTIVITY
-import com.adamfoerster.happyplaces.Utils.CAMERA_PERM_REQ
-import com.adamfoerster.happyplaces.Utils.GALLERY_CODE
-import com.adamfoerster.happyplaces.Utils.IMAGE_DIR
-import com.adamfoerster.happyplaces.Utils.STORAGE_PERM_REQ
-import com.adamfoerster.happyplaces.Utils.sdf
+import com.adamfoerster.happyplaces.database.PlaceDAO
+import com.adamfoerster.happyplaces.utils.Utils.CAMERA_ACTIVITY
+import com.adamfoerster.happyplaces.utils.Utils.CAMERA_PERM_REQ
+import com.adamfoerster.happyplaces.utils.Utils.GALLERY_CODE
+import com.adamfoerster.happyplaces.utils.Utils.IMAGE_DIR
+import com.adamfoerster.happyplaces.utils.Utils.STORAGE_PERM_REQ
+import com.adamfoerster.happyplaces.utils.Utils.sdf
 import com.adamfoerster.happyplaces.database.PlaceEntity
 import com.adamfoerster.happyplaces.databinding.ActivityAddBinding
+import com.adamfoerster.happyplaces.utils.Utils
 import com.vmadalin.easypermissions.EasyPermissions
 import kotlinx.coroutines.launch
 import java.io.File
@@ -39,10 +41,12 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
     lateinit var binding: ActivityAddBinding
     var calendar = Calendar.getInstance()
     lateinit var dateListener: DatePickerDialog.OnDateSetListener
-    lateinit var place: PlaceEntity
+    private var place: PlaceEntity? = null
+    lateinit var dao: PlaceDAO
     var image = ""
     var latitude = 0.0
     var longitude = 0.0
+    var id = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +58,8 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
         binding.toolbarAdd.setNavigationOnClickListener {
             onBackPressed()
         }
+        dao = (application as HappyPlaces).db.placeDao()
+        updateDateView()
         dateListener =
             DatePickerDialog.OnDateSetListener { view, year, month, dayOfMonth ->
                 calendar.set(Calendar.YEAR, year)
@@ -61,6 +67,7 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
                 calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                 updateDateView()
             }
+
         binding.dateInput.setOnClickListener(this)
         binding.btnAddImage.setOnClickListener(this)
         binding.dateInput.setOnFocusChangeListener { view, b ->
@@ -69,32 +76,9 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
             )
         }
         binding.btnSave.setOnClickListener {
-            var isValid = true
-            when {
-                binding.nameInput.text.isNullOrBlank() -> isValid = false
-                binding.dateInput.text.isNullOrBlank() -> isValid = false
-                binding.descriptionInput.text.isNullOrBlank() -> isValid = false
-                binding.locationInput.text.isNullOrBlank() -> isValid = false
-            }
-            if (!isValid) {
-                Toast.makeText(
-                    this,
-                    "All fields are required",
-                    Toast.LENGTH_SHORT
-                ).show()
-                return@setOnClickListener
-            }
-            place = PlaceEntity(
-                binding.nameInput.text.toString(),
-                image,
-                binding.descriptionInput.text.toString(),
-                binding.dateInput.text.toString(),
-                binding.locationInput.text.toString(),
-                0,
-                0
-            )
-            addPlaceToDB()
+            savePlaceToDB()
         }
+        loadEditData()
     }
 
     override fun onPermissionsDenied(requestCode: Int, perms: List<String>) {
@@ -168,16 +152,46 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
         }
     }
 
-    fun addPlaceToDB() {
-        val dao = (application as HappyPlaces).db.placeDao()
+    fun loadEditData() {
+        if (intent.hasExtra(Utils.EDIT_PLACE_EXTRA) == null) return
+        id = intent.getIntExtra(Utils.EDIT_PLACE_EXTRA, 0)
+        if (id == 0) return
+        place = dao.findById(id)
+        place!!.id = id
+        place.let {
+            supportActionBar?.title = "Editing Place"
+            binding.nameInput.setText(it?.title)
+            binding.descriptionInput.setText(it?.description)
+            binding.imageView.setImageURI(Uri.parse(it?.image))
+            binding.locationInput.setText(it?.location)
+            binding.dateInput.setText(it?.date)
+            binding.btnSave.text = "UPDATE"
+        }
+
+    }
+
+    fun savePlaceToDB() {
         lifecycleScope.launch {
-            val result = dao.insertAll(place)
+            if (!validateForm()) {
+                Toast.makeText(
+                    this@AddActivity,
+                    "All fields are required",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+            place = formToEntity()
+            if (id == 0) {
+                val result = dao.insertAll(place!!)
+            } else {
+                place!!.id = id
+                val result = dao.updateAll(place!!)
+            }
             Toast.makeText(
                 this@AddActivity,
                 "Happy Place saved",
                 Toast.LENGTH_SHORT
             ).show()
-            Log.d("Bleh", "add result: $result")
             setResult(Activity.RESULT_OK)
             finish()
         }
@@ -278,5 +292,28 @@ class AddActivity : AppCompatActivity(), View.OnClickListener,
         val uri = Uri.parse(file.absolutePath)
         Log.d("Bleh", uri.toString())
         return uri
+    }
+
+    fun formToEntity(): PlaceEntity {
+        return PlaceEntity(
+            binding.nameInput.text.toString(),
+            image,
+            binding.descriptionInput.text.toString(),
+            binding.dateInput.text.toString(),
+            binding.locationInput.text.toString(),
+            0,
+            0
+        )
+    }
+
+    fun validateForm(): Boolean {
+        var isValid = true
+        when {
+            binding.nameInput.text.isNullOrBlank() -> isValid = false
+            binding.dateInput.text.isNullOrBlank() -> isValid = false
+            binding.descriptionInput.text.isNullOrBlank() -> isValid = false
+            binding.locationInput.text.isNullOrBlank() -> isValid = false
+        }
+        return isValid
     }
 }
